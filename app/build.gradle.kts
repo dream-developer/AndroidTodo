@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
+    id("com.google.devtools.ksp") // 追加
 }
 
 android {
@@ -30,17 +31,22 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+//        sourceCompatibility = JavaVersion.VERSION_1_8
+//        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17 // 修正
+        targetCompatibility = JavaVersion.VERSION_17 // 修正
+
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        //  jvmTarget = "1.8"
+        jvmTarget = "17" // 修正
     }
     buildFeatures {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        //kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.11" // 修正
     }
     packaging {
         resources {
@@ -50,6 +56,16 @@ android {
 }
 
 dependencies {
+    // Room(データベース)ライブラリ
+    val roomVersion = "2.6.1"
+    implementation("androidx.room:room-runtime:${roomVersion}")
+    // kspが赤くなる場合、一旦、KSPの一行をコメントアウトし、「Sync Now」ボタン押下。その後にコメントイン(コメント状態解除)して、再び「Sync Now」ボタン押下
+    ksp("androidx.room:room-compiler:${roomVersion}")
+    implementation("androidx.room:room-ktx:${roomVersion}")
+
+    // Navigation(画面遷移)ライブラリ
+    val navVersion = "2.7.7"
+    implementation ("androidx.navigation:navigation-compose:${navVersion}")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
