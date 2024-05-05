@@ -6,12 +6,18 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -21,12 +27,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.compose.NavHost
@@ -47,7 +57,9 @@ import com.example.androidtodo.ui.theme.AndroidTodoTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 
 class MainActivity : ComponentActivity() {
     private val todoModel = TodoModel() // 1
@@ -77,8 +89,9 @@ fun MainApp(todoModel: TodoModel) { // 1
         navController = navController,
         startDestination = "/"
     ) {
-        composable(route = "/") { // 2
+        composable(route = "/") {
             ListScreen(
+                viewModel = ListScreenViewModel(todoModel = todoModel), // 1
                 toCreateScreen = { navController.navigate("/create") },
             )
         }
@@ -115,6 +128,20 @@ class TodoModel {
     }
 }
 
+class ListScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
+    fun getAll(): Flow<List<Todo>> { // 1
+        var todoList: Flow<List<Todo>> = flow {}
+        viewModelScope.launch {
+            try {
+                todoList = todoModel.getAll()
+            } catch (e: Exception) {
+                Log.e("Exception", "例外: ${e.message}")
+            }
+        }
+        return todoList
+    }
+}
+
 class CreateScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
     fun create(content: String) {
         if (content.isBlank()) {
@@ -130,16 +157,51 @@ class CreateScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListScreen(
+    viewModel: ListScreenViewModel, // 1
     toCreateScreen: () -> Unit,
 ) {
-    Column {
-        Text("一覧画面")
-        Button(
-            onClick = { toCreateScreen() }
-        ) {
-            Text("追加画面へ")
+    val todoList by viewModel.getAll().collectAsState(initial = emptyList()) // 2
+    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(text = "一覧画面") }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { toCreateScreen() }) {
+                Icon(imageVector = Icons.Filled.Add, contentDescription = null)
+            }
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier.padding(paddingValues).fillMaxSize()
+        ) { // 3
+            items(count = todoList.size,
+                key = { index -> todoList[index].id }
+            ) { index ->
+                var todo = todoList[index]
+                Row {
+                    Text(
+                        text = "ID ${todo.id}: ",
+                        fontSize = 14.sp,
+                        color = Color.Gray
+                    )
+                    Text(
+                        text = "created at: ${sdf.format(todo.created_at)}",
+                        fontSize = 14.sp,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Right,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Text(text = todo.content)
+                Divider()
+            }
         }
     }
 }
