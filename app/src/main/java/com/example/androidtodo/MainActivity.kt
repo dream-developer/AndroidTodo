@@ -2,6 +2,7 @@ package com.example.androidtodo
 
 import android.app.Application
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -36,6 +39,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private val todoModel = TodoModel() // 1
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -45,30 +50,68 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    CeateScreen()
+                    CreateScreen( // 2
+                        viewModel = CreateScreenViewModel(todoModel = todoModel)
+                    )
                 }
             }
         }
     }
 }
 
-@Composable
-fun CeateScreen() { // 1
-    val dao = RoomApplication.database.todoDao() // 2
+class TodoModel {
+    private val dao = RoomApplication.database.todoDao()
+    suspend fun create(content: String) {
+        val createdAt = System.currentTimeMillis()
+        dao.create(Todo(content = content, created_at = createdAt))
+    }
 
-    var content by rememberSaveable { mutableStateOf("") } // 3
-    Column {
-        OutlinedTextField( // 4
+    fun getAll(): Flow<List<Todo>> {
+        return dao.getAll()
+    }
+
+    fun getById(id: Int): Flow<Todo>? {
+        return dao.getById(id)
+    }
+
+    suspend fun update(id: Int, content: String, created_at: Long) {
+        dao.update(Todo(id = id, content = content, created_at = created_at))
+    }
+
+    suspend fun delete(id: Int) {
+        dao.delete(Todo(id = id))
+    }
+}
+
+class CreateScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
+    fun create(content: String) {
+        if (content.isBlank()) {
+            return
+        }
+        viewModelScope.launch {
+            try {
+                todoModel.create(content = content)
+            } catch (e: Exception) {
+                Log.e("Exception", "例外: ${e.message}")
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateScreen(
+    viewModel: CreateScreenViewModel, // 1
+) {
+    var content by rememberSaveable { mutableStateOf("") }
+    Column() {
+        OutlinedTextField(
             value = content,
             onValueChange = { content = it },
         )
         Button(
-            onClick = { // 5
-                val createdAt = System.currentTimeMillis() // 6
-                CoroutineScope(Dispatchers.Default).launch { // 7
-                    dao.create(Todo(content = content, created_at = createdAt)) // 8
-                    content = "" // 9
-                }
+            onClick = {
+                viewModel.create(content = content) // 2
+                content = ""
             }
         ) {
             Text("追加")
