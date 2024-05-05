@@ -7,11 +7,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -50,11 +61,32 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    CreateScreen( // 2
-                        viewModel = CreateScreenViewModel(todoModel = todoModel)
-                    )
+                    MainApp(todoModel = todoModel)
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+fun MainApp(todoModel: TodoModel) { // 1
+    val navController = rememberNavController()
+
+    NavHost(
+        navController = navController,
+        startDestination = "/"
+    ) {
+        composable(route = "/") { // 2
+            ListScreen(
+                toCreateScreen = { navController.navigate("/create") },
+            )
+        }
+        composable(route = "/create") { // 3
+            CreateScreen(
+                viewModel = CreateScreenViewModel(todoModel = todoModel),
+                toListScreen = { navController.navigate("/") }
+            )
         }
     }
 }
@@ -99,22 +131,52 @@ class CreateScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
 }
 
 @Composable
+fun ListScreen(
+    toCreateScreen: () -> Unit,
+) {
+    Column {
+        Text("一覧画面")
+        Button(
+            onClick = { toCreateScreen() }
+        ) {
+            Text("追加画面へ")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun CreateScreen(
-    viewModel: CreateScreenViewModel, // 1
+    viewModel: CreateScreenViewModel,
+    toListScreen: () -> Unit, // 1
 ) {
     var content by rememberSaveable { mutableStateOf("") }
-    Column() {
-        OutlinedTextField(
-            value = content,
-            onValueChange = { content = it },
-        )
-        Button(
-            onClick = {
-                viewModel.create(content = content) // 2
-                content = ""
+
+    Scaffold( // 2
+        topBar = {
+            TopAppBar(
+                title = { Text(text = "追加画面") },
+                navigationIcon = {
+                    IconButton(onClick = { toListScreen() }) {
+                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(modifier = Modifier.padding(paddingValues)) {
+            OutlinedTextField(
+                value = content,
+                onValueChange = { content = it },
+            )
+            Button(
+                onClick = {
+                    viewModel.create(content = content)
+                    content = ""
+                }
+            ) {
+                Text("追加")
             }
-        ) {
-            Text("追加")
         }
     }
 }
