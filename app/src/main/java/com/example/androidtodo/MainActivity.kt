@@ -4,11 +4,18 @@ import android.app.Application
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.room.Dao
@@ -23,7 +30,10 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import com.example.androidtodo.ui.theme.AndroidTodoTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,9 +45,33 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Greeting("Android")
+                    CeateScreen()
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun CeateScreen() { // 1
+    val dao = RoomApplication.database.todoDao() // 2
+
+    var content by rememberSaveable { mutableStateOf("") } // 3
+    Column {
+        OutlinedTextField( // 4
+            value = content,
+            onValueChange = { content = it },
+        )
+        Button(
+            onClick = { // 5
+                val createdAt = System.currentTimeMillis() // 6
+                CoroutineScope(Dispatchers.Default).launch { // 7
+                    dao.create(Todo(content = content, created_at = createdAt)) // 8
+                    content = "" // 9
+                }
+            }
+        ) {
+            Text("追加")
         }
     }
 }
@@ -88,22 +122,5 @@ class RoomApplication : Application() { // 3
             AppDatabase::class.java,
             "todos" // 5
         ).build()
-    }
-}
-
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    AndroidTodoTheme {
-        Greeting("Android")
     }
 }
