@@ -66,6 +66,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.androidtodo.ui.theme.AndroidTodoTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -492,12 +494,13 @@ fun CreateScreen(
     }
 }
 
-@Entity(tableName = "todos") // 1
+@Entity(tableName = "todos")
 data class Todo(
-    @PrimaryKey(autoGenerate = true) // 2
+    @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-    val content: String = "", // 3
-    val created_at: Long = 0, // 4
+    val content: String = "",
+    val created_at: Long = 0,
+    val test: Int = 0, // マイグレーション検証用
 )
 
 @Dao // 1
@@ -518,13 +521,20 @@ interface TodoDao {
     suspend fun delete(todo: Todo)
 }
 
-@Database(entities = [Todo::class], version = 1, exportSchema = false) // 1
+// マイグレーション対応 version = 1 → version = 2
+@Database(entities = [Todo::class], version = 2, exportSchema = false)
 
 abstract class AppDatabase : RoomDatabase() { // 2
     abstract fun todoDao(): TodoDao
 }
 
 class RoomApplication : Application() { // 3
+    // マイグレーション対応 SQL
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE todos ADD COLUMN test INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 
     companion object { // 4
         lateinit var database: AppDatabase
@@ -537,6 +547,8 @@ class RoomApplication : Application() { // 3
             applicationContext,
             AppDatabase::class.java,
             "todos" // 5
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2) // マイグレーション対応 SQLを渡す
+            .build()
     }
 }
