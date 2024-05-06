@@ -3,8 +3,10 @@ package com.example.androidtodo
 import android.app.Application
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -31,14 +34,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
@@ -63,7 +69,11 @@ import androidx.room.Update
 import com.example.androidtodo.ui.theme.AndroidTodoTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -152,29 +162,51 @@ class TodoModel {
 }
 
 class EditScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
-    fun getById(id: Int): Flow<Todo> { // 1
+    sealed interface UiState {
+        data object Loading : UiState
+        data object Screen : UiState
+        data object Blank : UiState
+        data object Success : UiState
+        data object Error : UiState
+    }
+
+    private val _uiState = MutableStateFlow<UiState>(UiState.Loading) // 1
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    fun getById(id: Int): Flow<Todo> {
         var todo: Flow<Todo> = flow { }
+
         viewModelScope.launch {
             try {
-                todo = todoModel?.getById(id) ?: throw Exception("idがnull") // 2
+                todo = todoModel?.getById(id) ?: throw Exception("idがデータが無い")
+                delay(1000) // ロード中テスト用
+                _uiState.value = UiState.Screen // 2
             } catch (e: Exception) {
                 Log.e("Exception", "例外: ${e.message}")
+                _uiState.value = UiState.Error // 3
             }
         }
         return todo
     }
 
-    fun update(id: Int, content: String, created_at: Long) { // 3
+    fun update(id: Int, content: String, created_at: Long) {
         if (content.isBlank()) {
+            _uiState.value = UiState.Blank // 4
             return
         }
         viewModelScope.launch {
             try {
                 todoModel.update(id = id, content = content, created_at = created_at)
+                _uiState.value = UiState.Success // 5
             } catch (e: Exception) {
+                _uiState.value = UiState.Error // 6
                 Log.e("Exception", "例外: ${e.message}")
             }
         }
+    }
+
+    fun setScreen() { // 7
+        _uiState.value = UiState.Screen
     }
 }
 
@@ -203,33 +235,54 @@ class ListScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
 }
 
 class CreateScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
+    sealed interface UiState { // 1
+        data object Screen : UiState
+        data object Blank : UiState
+        data object Success : UiState
+        data object Error : UiState
+    }
+
+    private val _uiState = MutableStateFlow<UiState>(UiState.Screen) // 2
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
     fun create(content: String) {
         if (content.isBlank()) {
+            _uiState.value = UiState.Blank // 3
             return
         }
         viewModelScope.launch {
             try {
                 todoModel.create(content = content)
+                _uiState.value = UiState.Success // 4
             } catch (e: Exception) {
+                _uiState.value = UiState.Error // 5
                 Log.e("Exception", "例外: ${e.message}")
             }
         }
+    }
+
+    fun setScreen() {
+        _uiState.value = UiState.Screen // 6
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditScreen( // 1
+fun EditScreen(
     viewModel: EditScreenViewModel,
     toListScreen: () -> Unit,
     id: Int,
 ) {
-    val todo by viewModel.getById(id).collectAsState(initial = Todo()) // 2
+    val todo by viewModel.getById(id).collectAsState(initial = Todo())
     var content by rememberSaveable { mutableStateOf("") }
+    var isLoading by rememberSaveable { mutableStateOf(true) } // 1
     content = todo.content
+    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
+    val uiStateTemp = uiState
 
     Scaffold(
-        topBar = { // 3
+        topBar = {
             TopAppBar(
                 title = { Text(text = "編集画面") },
                 navigationIcon = {
@@ -246,13 +299,44 @@ fun EditScreen( // 1
                 onValueChange = { content = it },
             )
             Button(
-                onClick = { // 4
+                onClick = {
                     viewModel.update(
                         id = id, content = content, created_at = todo.created_at
                     )
-                    toListScreen()
                 }
             ) { Text("更新") }
+        }
+
+        if (isLoading) { // 2
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.padding(paddingValues).fillMaxSize(),
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+
+        LaunchedEffect(uiState) {
+            when (uiStateTemp) {
+                EditScreenViewModel.UiState.Loading -> {} // 3
+                EditScreenViewModel.UiState.Screen -> { // 4
+                    isLoading = false
+                }
+
+                EditScreenViewModel.UiState.Blank -> {
+                    Toast.makeText(context, "入力してください", Toast.LENGTH_SHORT).show()
+                    viewModel.setScreen()
+                }
+
+                EditScreenViewModel.UiState.Success -> { // 5
+                    Toast.makeText(context, "更新しました", Toast.LENGTH_SHORT).show()
+                    toListScreen()
+                }
+
+                EditScreenViewModel.UiState.Error -> {
+                    Toast.makeText(context, "エラーが発生しました", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 }
@@ -355,11 +439,14 @@ fun ListScreen(
 @Composable
 fun CreateScreen(
     viewModel: CreateScreenViewModel,
-    toListScreen: () -> Unit, // 1
+    toListScreen: () -> Unit,
 ) {
     var content by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current // 1
+    val uiState by viewModel.uiState.collectAsState() // 2
+    val uiStateTemp = uiState // 3
 
-    Scaffold( // 2
+    Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(text = "追加画面") },
@@ -379,10 +466,27 @@ fun CreateScreen(
             Button(
                 onClick = {
                     viewModel.create(content = content)
-                    content = ""
                 }
             ) {
                 Text("追加")
+            }
+        }
+
+        LaunchedEffect(uiState) { // 4
+            when (uiStateTemp) { // 5
+                CreateScreenViewModel.UiState.Screen -> {} // 6
+                CreateScreenViewModel.UiState.Blank -> { // 7
+                    Toast.makeText(context, "入力してください", Toast.LENGTH_SHORT).show()
+                    viewModel.setScreen()
+                }
+                CreateScreenViewModel.UiState.Success -> { // 8
+                    Toast.makeText(context, "追加しました", Toast.LENGTH_SHORT).show()
+                    content = ""
+                    viewModel.setScreen()
+                }
+                CreateScreenViewModel.UiState.Error -> { // 9
+                    Toast.makeText(context, "エラーが発生しました", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
