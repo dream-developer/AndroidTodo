@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,9 +40,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -91,14 +94,30 @@ fun MainApp(todoModel: TodoModel) { // 1
     ) {
         composable(route = "/") {
             ListScreen(
-                viewModel = ListScreenViewModel(todoModel = todoModel), // 1
+                viewModel = ListScreenViewModel(todoModel = todoModel),
                 toCreateScreen = { navController.navigate("/create") },
+                toEditScreen = { id -> navController.navigate("/edit/$id") },
             )
         }
         composable(route = "/create") { // 3
             CreateScreen(
                 viewModel = CreateScreenViewModel(todoModel = todoModel),
                 toListScreen = { navController.navigate("/") }
+            )
+        }
+        composable(
+            route = "/edit/{id}",
+            arguments = listOf(
+                navArgument("id") {
+                    type = NavType.IntType
+                },
+            ),
+        ) { backStackEntry ->
+            val id = backStackEntry.arguments?.getInt("id") ?: throw Exception("idがnull")
+            EditScreen(
+                viewModel = EditScreenViewModel(todoModel = todoModel),
+                toListScreen = { navController.navigate("/") },
+                id = id
             )
         }
     }
@@ -125,6 +144,33 @@ class TodoModel {
 
     suspend fun delete(id: Int) {
         dao.delete(Todo(id = id))
+    }
+}
+
+class EditScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
+    fun getById(id: Int): Flow<Todo> { // 1
+        var todo: Flow<Todo> = flow { }
+        viewModelScope.launch {
+            try {
+                todo = todoModel?.getById(id) ?: throw Exception("idがnull") // 2
+            } catch (e: Exception) {
+                Log.e("Exception", "例外: ${e.message}")
+            }
+        }
+        return todo
+    }
+
+    fun update(id: Int, content: String, created_at: Long) { // 3
+        if (content.isBlank()) {
+            return
+        }
+        viewModelScope.launch {
+            try {
+                todoModel.update(id = id, content = content, created_at = created_at)
+            } catch (e: Exception) {
+                Log.e("Exception", "例外: ${e.message}")
+            }
+        }
     }
 }
 
@@ -159,11 +205,52 @@ class CreateScreenViewModel(private val todoModel: TodoModel) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ListScreen(
-    viewModel: ListScreenViewModel, // 1
-    toCreateScreen: () -> Unit,
+fun EditScreen( // 1
+    viewModel: EditScreenViewModel,
+    toListScreen: () -> Unit,
+    id: Int,
 ) {
-    val todoList by viewModel.getAll().collectAsState(initial = emptyList()) // 2
+    val todo by viewModel.getById(id).collectAsState(initial = Todo()) // 2
+    var content by rememberSaveable { mutableStateOf("") }
+    content = todo.content
+
+    Scaffold(
+        topBar = { // 3
+            TopAppBar(
+                title = { Text(text = "編集画面") },
+                navigationIcon = {
+                    IconButton(onClick = { toListScreen() }) {
+                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(modifier = Modifier.padding(paddingValues)) {
+            OutlinedTextField(
+                value = content,
+                onValueChange = { content = it },
+            )
+            Button(
+                onClick = { // 4
+                    viewModel.update(
+                        id = id, content = content, created_at = todo.created_at
+                    )
+                    toListScreen()
+                }
+            ) { Text("更新") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ListScreen(
+    viewModel: ListScreenViewModel,
+    toCreateScreen: () -> Unit,
+    toEditScreen: (Int) -> Unit, // 1
+) {
+    val todoList by viewModel.getAll().collectAsState(initial = emptyList())
     val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
     Scaffold(
@@ -180,7 +267,7 @@ fun ListScreen(
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier.padding(paddingValues).fillMaxSize()
-        ) { // 3
+        ) {
             items(count = todoList.size,
                 key = { index -> todoList[index].id }
             ) { index ->
@@ -200,6 +287,17 @@ fun ListScreen(
                     )
                 }
                 Text(text = todo.content)
+                Row { // 2
+                    IconButton(
+                        onClick = {
+                            toEditScreen(todo.id)
+                        }) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit",
+                        )
+                    }
+                }
                 Divider()
             }
         }
